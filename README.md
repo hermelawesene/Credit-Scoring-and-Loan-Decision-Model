@@ -43,7 +43,7 @@ You must have Python 3.8+ installed.
 
 It is highly recommended to use a virtual environment to manage dependencies.
 
-   # Create the environment  python -m venv .venv   # Activate the environment (Windows)  .\.venv\Scripts\activate  # Activate the environment (macOS/Linux)  source .venv/bin/activate   `
+   `# Create the environment  python -m venv .venv   # Activate the environment (Windows)  .\.venv\Scripts\activate  # Activate the environment (macOS/Linux)  source .venv/bin/activate   `
 
 #### 4\. Install Dependencies
 
