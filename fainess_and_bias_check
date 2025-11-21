@@ -1,0 +1,186 @@
+import pandas as pd
+import numpy as np
+import pickle
+from sklearn.metrics import confusion_matrix
+
+# --- Helper Function for Fairness Analysis ---
+def calculate_fairness_metrics(df_test, protected_attribute_name, reference_group_name, protected_group_name):
+    """
+    Calculates Disparate Impact Ratio (DIR) and Equal Opportunity Difference (EOD).
+    Assumes Favorable Outcome (Approval) = Predicted Class 0 (Non-Default).
+    """
+
+    # 1. Filter Groups
+    ref_group = df_test[df_test[protected_attribute_name] == reference_group_name]
+    prot_group = df_test[df_test[protected_attribute_name] == protected_group_name]
+    
+    # 2. Calculate Approval Rates (Disparate Impact Ratio - DIR)
+    # Approval is defined as predicted non-default (P_hat = 0)
+    ref_approval_rate = (ref_group['y_pred'] == 0).mean()
+    prot_approval_rate = (prot_group['y_pred'] == 0).mean()
+    
+    # Calculate DIR: Ratio of protected group approval rate to reference group approval rate
+    # A fair result is close to 1.0 (typically > 0.8)
+    dir_value = prot_approval_rate / ref_approval_rate if ref_approval_rate > 0 else 0
+    
+    # 3. Calculate Equal Opportunity Difference (EOD)
+    # EOD measures True Positive Rate (TPR) difference among truly creditworthy individuals (True Y = 0)
+    # TPR = P(predicted non-default | truly non-default) = True Negatives / Actual Negatives
+    
+    # --- Reference Group TPR ---
+    # Truly non-defaulting applicants in the reference group (Y_true = 0)
+    ref_true_negatives = len(ref_group[(ref_group['y_true'] == 0) & (ref_group['y_pred'] == 0)])
+    ref_actual_negatives = len(ref_group[ref_group['y_true'] == 0])
+    ref_tpr = ref_true_negatives / ref_actual_negatives if ref_actual_negatives > 0 else 0
+    
+    # --- Protected Group TPR ---
+    # Truly non-defaulting applicants in the protected group (Y_true = 0)
+    prot_true_negatives = len(prot_group[(prot_group['y_true'] == 0) & (prot_group['y_pred'] == 0)])
+    prot_actual_negatives = len(prot_group[prot_group['y_true'] == 0])
+    prot_tpr = prot_true_negatives / prot_actual_negatives if prot_actual_negatives > 0 else 0
+    
+    # Calculate EOD: Difference in TPR between reference and protected group
+    # A fair result is close to 0.0
+    eod_value = ref_tpr - prot_tpr
+
+    return {
+        "dir_value": dir_value,
+        "ref_approval_rate": ref_approval_rate,
+        "prot_approval_rate": prot_approval_rate,
+        "eod_value": eod_value,
+        "ref_tpr": ref_tpr,
+        "prot_tpr": prot_tpr,
+    }
+
+
+def main_fairness_analysis():
+    print("--- Starting Credit Risk Model Fairness Analysis ---")
+
+    # NOTE: In a real scenario, you must load your actual test dataset here.
+    # We will mock the data for demonstration purposes, ensuring 'person_age' and
+    # all features required for prediction are present.
+
+    # --- 1. Load Assets and Test Data ---
+    try:
+        # Load the saved model and preprocessing objects
+        with open("best_model.pkl", "rb") as f:
+            model = pickle.load(f)
+        with open("scaler.pkl", "rb") as f:
+            scaler = pickle.load(f)
+        with open("encoders.pkl", "rb") as f:
+            encoders = pickle.load(f)
+    except FileNotFoundError as e:
+        print(f"\n[ERROR] Missing asset file: {e.filename}. Please ensure all .pkl files are in the same directory.")
+        return
+    except Exception as e:
+        print(f"\n[ERROR] Failed to load model assets: {e}")
+        return
+
+    # --- 2. Load and Prepare Test Data (MOCK DATA FOR DEMO) ---
+    # In a real application, replace this with pd.read_csv('your_test_data.csv')
+    print("\n[INFO] Generating mock test data for analysis...")
+    np.random.seed(42)
+    N = 1000
+    mock_data = {
+        'person_age': np.random.randint(18, 70, N),
+        'person_income': np.random.normal(50000, 15000, N),
+        'loan_amnt': np.random.randint(1000, 30000, N),
+        'loan_int_rate': np.random.uniform(5.0, 25.0, N),
+        'cb_person_cred_hist_length': np.random.randint(1, 40, N),
+        'person_emp_length': np.random.uniform(0, 30, N),
+        'cb_person_default_on_file': np.random.choice(['Y', 'N'], N, p=[0.2, 0.8]),
+        'person_home_ownership': np.random.choice(['MORTGAGE', 'RENT', 'OWN', 'OTHER'], N, p=[0.4, 0.4, 0.1, 0.1]),
+        'loan_intent': np.random.choice(['EDUCATION', 'PERSONAL', 'DEBTCONSOLIDATION'], N),
+        'loan_grade': np.random.choice(['A', 'B', 'C', 'D'], N),
+        'y_true': np.random.binomial(1, 0.35, N) # True loan default status (1=Default, 0=Non-Default)
+    }
+    df_test = pd.DataFrame(mock_data)
+    y_true = df_test['y_true']
+    X_test = df_test.drop('y_true', axis=1)
+
+    # --- 3. Preprocessing X_test (Replicate app_corrected_shap.py logic) ---
+    print("[INFO] Preprocessing test data using saved scaler and encoders...")
+    
+    # Feature Engineering
+    epsilon = 1e-6
+    X_test['loan_percent_income'] = X_test['loan_amnt'] / (X_test['person_income'] + epsilon)
+
+    # Apply Label Encoders
+    for col, le in encoders.items():
+        if col in X_test.columns:
+            # Note: For real data, you should handle unseen categories (not shown here for brevity)
+            X_test[col] = le.transform(X_test[col])
+
+    # One-Hot Encoding
+    X_test = pd.get_dummies(X_test)
+    
+    # Reindex and Scale (must match the model's feature names exactly)
+    feature_names = model.get_booster().feature_names
+    X_test = X_test.reindex(columns=feature_names, fill_value=0)
+    
+    num_cols = [
+        'person_age', 'person_income', 'person_emp_length', 'loan_amnt', 
+        'loan_int_rate', 'loan_percent_income', 'cb_person_cred_hist_length' 
+    ]
+    X_test[num_cols] = scaler.transform(X_test[num_cols])
+
+    # --- 4. Get Predictions ---
+    df_test['y_true'] = y_true
+    df_test['y_pred'] = model.predict(X_test)
+    df_test['y_pred_proba'] = model.predict_proba(X_test)[:, 1] # Probability of Default (Class 1)
+
+    # --- 5. Define Protected Groups (Step 3.1) ---
+    # As per the plan, we test against 'person_age'
+    
+    def get_age_group(age):
+        if 18 <= age <= 25:
+            return 'Young' # Protected Group
+        elif 26 <= age <= 55:
+            return 'Prime' # Reference Group
+        else:
+            return 'Senior' # Monitored Group
+
+    # Apply the grouping to the original age data before it was scaled
+    df_test['Age_Group'] = df_test['person_age'].apply(get_age_group) 
+    
+    # --- 6. Calculate Metrics (Step 3.3 & 3.4) ---
+    
+    # Test 1: Young (Protected) vs. Prime (Reference)
+    print("\n--- TEST 1: Young (18-25) vs. Prime (26-55) ---")
+    results_young_vs_prime = calculate_fairness_metrics(
+        df_test, 'Age_Group', 'Prime', 'Young'
+    )
+
+    print(f"Reference Group (Prime) Approval Rate: {results_young_vs_prime['ref_approval_rate']:.3f}")
+    print(f"Protected Group (Young) Approval Rate: {results_young_vs_prime['prot_approval_rate']:.3f}")
+    print(f"**Disparate Impact Ratio (DIR): {results_young_vs_prime['dir_value']:.3f}**")
+    
+    dir_conclusion = "PASS (>= 0.8): The difference in approval rates is acceptable." if results_young_vs_prime['dir_value'] >= 0.8 else "FAIL (< 0.8): Indicates potential bias against the Young group."
+    print(f"  Conclusion: {dir_conclusion}")
+
+    print("-" * 30)
+    
+    print(f"Reference Group (Prime) TPR (True Non-Default Rate): {results_young_vs_prime['ref_tpr']:.3f}")
+    print(f"Protected Group (Young) TPR (True Non-Default Rate): {results_young_vs_prime['prot_tpr']:.3f}")
+    print(f"**Equal Opportunity Difference (EOD): {results_young_vs_prime['eod_value']:.3f}**")
+    
+    eod_conclusion = "PASS (Close to 0.0): The model is equally effective at identifying creditworthy applicants." if abs(results_young_vs_prime['eod_value']) < 0.1 else "FAIL: Indicates unequal performance on truly creditworthy applicants."
+    print(f"  Conclusion: {eod_conclusion}")
+
+    # Test 2: Home Ownership (Proxy) - RENT (Protected) vs. MORTGAGE (Reference)
+    print("\n--- TEST 2: RENT (Protected) vs. MORTGAGE (Reference) ---")
+    results_rent_vs_mortgage = calculate_fairness_metrics(
+        df_test, 'person_home_ownership', 'MORTGAGE', 'RENT'
+    )
+
+    print(f"Reference Group (MORTGAGE) Approval Rate: {results_rent_vs_mortgage['ref_approval_rate']:.3f}")
+    print(f"Protected Group (RENT) Approval Rate: {results_rent_vs_mortgage['prot_approval_rate']:.3f}")
+    print(f"**Disparate Impact Ratio (DIR): {results_rent_vs_mortgage['dir_value']:.3f}**")
+
+    # Repeat other metrics for Test 2...
+    
+    print("\n--- Analysis Complete ---")
+
+
+if __name__ == "__main__":
+    main_fairness_analysis()
