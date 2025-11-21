@@ -36,14 +36,14 @@ Follow these steps to set up the project locally and run the Streamlit applicati
 You must have Python 3.8+ installed.
 
 #### 2\. Clone the Repository
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   git clone [YOUR_REPOSITORY_URL]  cd Credit-Scoring-and-Loan-Decision-Model   `
+   git clone https://github.com/hermelawesene/Credit-Scoring-and-Loan-Decision-Model.git  
+   cd Credit-Scoring-and-Loan-Decision-Model   `
 
 #### 3\. Create and Activate Virtual Environment
 
 It is highly recommended to use a virtual environment to manage dependencies.
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   # Create the environment  python -m venv .venv   # Activate the environment (Windows)  .\.venv\Scripts\activate  # Activate the environment (macOS/Linux)  source .venv/bin/activate   `
+   # Create the environment  python -m venv .venv   # Activate the environment (Windows)  .\.venv\Scripts\activate  # Activate the environment (macOS/Linux)  source .venv/bin/activate   `
 
 #### 4\. Install Dependencies
 
